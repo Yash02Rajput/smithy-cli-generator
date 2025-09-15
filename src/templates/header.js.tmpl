@@ -1,0 +1,133 @@
+import { Command } from "commander";
+import path from "path";
+import { {{{imports}}}, {{{client}}} } from "{{{importFrom}}}"
+import fs from "fs";
+import os from "os";
+import readline from "readline";
+
+const tokenFile = path.join(
+  os.homedir(),
+  ".{{{cliName}}}"
+);
+
+function getStoredToken() {
+  try {
+    if (fs.existsSync(tokenFile)) {
+      const raw = fs.readFileSync(tokenFile, "utf8").trim();
+      return raw || null;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function saveToken(token) {
+  try {
+    fs.writeFileSync(tokenFile, token, "utf8");
+    return true;
+  } catch (error) {
+    console.error("Error saving token:", error.message);
+    return false;
+  }
+}
+
+
+async function getClientWithToken() {
+  let token = getStoredToken();
+
+  if (!token) {
+    token = await performLogin();
+  }
+
+  return new AirborneClient({
+    token: { token: token },
+    endpoint: "{{{endpointURL}}}",
+  });
+}
+
+function getClientWithoutToken() {
+  return new AirborneClient({
+    endpoint: "{{{endpointURL}}}",
+  });
+}
+
+{{{authPrompt}}}
+
+function mergeOptionsWithJsonFile(options, jsonFilePath) {
+  const jsonOptions = readJsonFile(jsonFilePath);
+  
+  // CLI arguments take precedence over JSON file values
+  const merged = { ...jsonOptions };
+  
+  // Override with any CLI arguments that were provided
+  Object.keys(options).forEach(key => {
+    if (options[key] !== undefined) {
+      merged[key] = options[key];
+    }
+  });
+  
+  return merged;
+}
+
+function readJsonFile(filePath) {
+  if (path.extname(filePath).toLowerCase() !== ".json") {
+    throw new Error("File must be a JSON file (.json)");
+  }
+  try {
+    const data = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(data);
+  } catch (err) {
+    throw new Error(`Failed to read or parse JSON file: ${err.message}`);
+  }
+}
+
+function validateRequiredOptions(options, requiredParams) {
+  const missing = [];
+  const getNestedValue = (obj, path) => {
+    const parts = path.replace(/\[\]/g, "").split(/\.|\{value\}/); // handle list [] and map {value}
+    let current = obj;
+    for (const part of parts) {
+      if (!current) return undefined;
+      current = current[part];
+    }
+    return current;
+  };
+
+  for (const field of requiredParams) {
+    // Check if this is a nested field that requires conditional validation
+    const fieldParts = field.split('.');
+    if (fieldParts.length > 1) {
+      // Get the parent path (everything except the last part)
+      const parentPath = fieldParts.slice(0, -1).join('.');
+      
+      // Check if the parent is also in the required params
+      const parentIsRequired = requiredParams.includes(parentPath);
+      
+      // If parent is not required, only validate this field if parent exists
+      if (!parentIsRequired) {
+        const parentExists = getNestedValue(options, parentPath);
+        if (parentExists === undefined || parentExists === null) {
+          continue; // Skip validation if parent doesn't exist
+        }
+      }
+    }
+
+    const value = getNestedValue(options, field);
+    if (value === undefined || value === null) {
+      missing.push(field);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required parameters: ${missing.join(', ')}`);
+  }
+}
+
+
+
+
+const program = new Command()
+  .name("airborne-ota-cli")
+  .description("Command-line interface for Airborne OTA operations")
+  .version("0.0.1");

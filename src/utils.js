@@ -1,0 +1,436 @@
+export const convertSmithyTypeToCliType = (type, obj) => {
+  const [namespace, target] = type.split("#");
+
+  // Primitive Smithy types
+  if (namespace === "smithy.api") {
+    return { type: target.toLowerCase() }; // return as object
+  }
+
+  // Custom type defined in obj
+  const typeDef = obj["shapes"][type];
+  if (!typeDef) {
+    throw new Error(`Type definition not found for ${type}`);
+  }
+
+  switch (typeDef.type) {
+    case "list":
+      return {
+        type: "list",
+        member: convertSmithyTypeToCliType(typeDef.member.target, obj),
+      };
+
+    case "map":
+      return {
+        type: "map",
+        key: {
+          name: "key",
+          ...convertSmithyTypeToCliType(typeDef.key.target, obj),
+          documentation: typeDef.key.traits?.["smithy.api#documentation"] || "",
+        },
+        value: {
+          name: "value",
+          ...convertSmithyTypeToCliType(typeDef.value.target, obj),
+          documentation:
+            typeDef.value.traits?.["smithy.api#documentation"] || "",
+        },
+      };
+
+    case "structure":
+      const members = {};
+      for (let [memberName, memberDef] of Object.entries(typeDef.members)) {
+        members[memberName] = {
+          name: memberName, // <-- add this
+          ...convertSmithyTypeToCliType(memberDef.target, obj),
+          required: !!(
+            memberDef.traits && memberDef.traits["smithy.api#required"]
+          ),
+          documentation: memberDef.traits
+            ? memberDef.traits["smithy.api#documentation"] || ""
+            : "",
+        };
+      }
+      return {
+        type: "structure",
+        members,
+      };
+
+    default:
+      throw new Error(`Unsupported type: ${typeDef.type}`);
+  }
+};
+
+export const generateImports = (ops) => {
+  let imports = [];
+  for (let i = 0; i < ops.length; i++) {
+    imports.push(ops[i].opName + "Command");
+  }
+
+  return imports.join(", ");
+};
+
+export const generateOptions = (params) => {
+  return params
+    .map((param) => {
+      const isList = param.type === "list";
+      const typePlaceholder = isList ? `<${param.name}...>` : `<${param.name}>`;
+      const flag = `--${param.name} ${typePlaceholder}`;
+      const desc = `${param.name} parameter`;
+
+      if (param.type === "document") {
+        const parserFn = `(value) => {
+  try {
+    if (value.startsWith("@")) {
+      return readJsonFile(value.slice(1));
+    }
+    return JSON.parse(value);
+  } catch (err) {
+    throw new Error("--${param.name} must be valid JSON or a @file.json path");
+  }
+}`;
+        // Always use .option() instead of .requiredOption() for flexibility
+        return ` .option("${flag}", "${desc}", ${parserFn})`;
+      }
+
+      if (param.type === "integer") {
+        const parserFn = `(value) => {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) {
+    throw new Error("--${param.name} must be a valid integer");
+  }
+  return parsed;
+}`;
+        return ` .option("${flag}", "${desc}", ${parserFn})`;
+      }
+
+      return ` .option("${flag}", "${desc}")`;
+    })
+    .join("\n");
+};
+export const generateParamDocs = (params, indent = 4, isTopLevel = true) => {
+  let paramDocs = "";
+  const processParam = (param, currentIndent, topLevel) => {
+    const req = param.required ? "(required)" : "(optional)";
+    const linePrefix = topLevel ? "--" : "";
+    const curSpace = " ".repeat(currentIndent);
+
+    switch (param.type) {
+      case "structure":
+        paramDocs += `${curSpace}${linePrefix}${param.name} ${req}`;
+        if (param.documentation) paramDocs += ` : ${param.documentation}`;
+        paramDocs += "\n";
+        Object.values(param.members || {}).forEach((m) =>
+          processParam(m, currentIndent + 4, false)
+        );
+        break;
+
+      case "list":
+        if (["structure", "list", "map"].includes(param.member.type)) {
+          paramDocs += `${curSpace}${linePrefix}${param.name} ${req}`;
+          if (param.documentation) paramDocs += ` : ${param.documentation}`;
+          paramDocs += "\n";
+          processParam(param.member, currentIndent + 4, false);
+        } else {
+          paramDocs += `${curSpace}${linePrefix}${
+            param.name
+          } [<${param.member.type.toLowerCase()}>] ${req}`;
+          if (param.documentation) paramDocs += ` : ${param.documentation}`;
+          paramDocs += "\n";
+        }
+        break;
+
+      case "map":
+        paramDocs += `${curSpace}${linePrefix}${param.name} ${req}`;
+        if (param.documentation) paramDocs += ` : ${param.documentation}`;
+        paramDocs += "\n";
+
+        // key
+        paramDocs += `${curSpace}    key <${param.key.type.toLowerCase()}>`;
+        if (param.key.documentation)
+          paramDocs += ` : ${param.key.documentation}`;
+        paramDocs += "\n";
+
+        // value
+        if (["structure", "list", "map"].includes(param.value.type)) {
+          paramDocs += `${curSpace}    value ${
+            param.value.required ? "(required)" : "(optional)"
+          }`;
+          if (param.value.documentation)
+            paramDocs += ` : ${param.value.documentation}`;
+          paramDocs += "\n";
+          processParam(param.value, currentIndent + 8, false);
+        } else {
+          paramDocs += `${curSpace}    value <${param.value.type.toLowerCase()}>`;
+          if (param.value.documentation)
+            paramDocs += ` : ${param.value.documentation}`;
+          paramDocs += "\n";
+        }
+        break;
+
+      default:
+        paramDocs += `${curSpace}${linePrefix}${
+          param.name
+        } <${param.type.toLowerCase()}> ${req}`;
+        if (param.documentation) paramDocs += ` : ${param.documentation}`;
+        paramDocs += "\n";
+        break;
+    }
+  };
+
+  params.forEach((param) => processParam(param, indent, isTopLevel));
+
+  return paramDocs;
+};
+
+export const generateCliUsageExample = (
+  actionName,
+  params,
+  commandPrefix 
+) => {
+  const requiredParams = params.filter((param) => param.required);
+  const optionalParams = params.filter((param) => !param.required);
+
+  let example = `$ ${commandPrefix} ${actionName}`;
+
+  // Add required parameters
+  requiredParams.forEach((param) => {
+    const isList = param.type.startsWith("[") && param.type.endsWith("]");
+    const placeholder = isList ? `<${param.name}...>` : `<${param.name}>`;
+    example += ` \\\\\n     --${param.name} ${placeholder}`;
+  });
+
+  // Add first optional parameter as example if exists
+  if (optionalParams.length > 0) {
+    const param = optionalParams[0];
+    const isList = param.type.startsWith("[") && param.type.endsWith("]");
+    const placeholder = isList
+      ? `<${param.name}...>`
+      : param.type === "document"
+      ? `<json|@file.json>`
+      : `<${param.name}>`;
+    example += ` \\\\\n     [--${param.name} ${placeholder}]`;
+  }
+
+  return example;
+};
+
+export const generateMixedUsageExample = (
+  actionName,
+  params,
+  commandPrefix
+) => {
+  const someParams = params.slice(0, 2); // Take first 2 params as example
+  let example = `$ ${commandPrefix} ${actionName} @params.json`;
+
+  someParams.forEach((param) => {
+    const placeholder =
+      param.type === "document" ? `<json|@file.json>` : `<value>`;
+    example += ` --${param.name} ${placeholder}`;
+  });
+
+  return example;
+};
+
+export const generateJsonFileExample = (params) => {
+  const exampleObj = {};
+
+  params.forEach((param) => {
+    if (param.type === "document") {
+      exampleObj[param.name] = {
+        example_key: "example_value",
+        version: "1.0.0",
+      };
+    } else if (param.type === "integer") {
+      exampleObj[param.name] = 123;
+    } else if (param.type.startsWith("[") && param.type.endsWith("]")) {
+      exampleObj[param.name] = ["item1", "item2"];
+    } else {
+      exampleObj[param.name] = `example_${param.name}`;
+    }
+  });
+
+  return `JSON file format (params.json):
+${JSON.stringify(exampleObj, null, 2)}`;
+};
+
+export const generateDocumentFieldHandling = (params) => {
+  const documentFields = params.filter((param) => param.type === "document");
+
+  if (documentFields.length === 0) return "";
+
+  let handling = `// Handle document fields specially if they're objects from JSON\n`;
+
+  documentFields.forEach((field) => {
+    handling += `  if (finalOptions.${field.name} && typeof finalOptions.${field.name} === 'object') {
+    // Convert object to string if command expects JSON string
+    finalOptions.${field.name} = JSON.stringify(finalOptions.${field.name});
+  }\n`;
+  });
+
+  return handling;
+};
+
+export const getRequiredParamsList = (params, parentKey = "") => {
+  let required = [];
+
+  params.forEach((param) => {
+    const fullName = parentKey ? `${parentKey}.${param.name}` : param.name;
+
+    if (param.required) {
+      required.push(fullName);
+    }
+
+    if (param.type === "structure" && param.members) {
+      required = required.concat(
+        getRequiredParamsList(Object.values(param.members), fullName)
+      );
+    } else if (param.type === "list" && param.member) {
+      // Recurse into the member, whatever type it is
+      required = required.concat(
+        getRequiredParamsList([param.member], `${fullName}[]`)
+      );
+    } else if (param.type === "map" && param.value) {
+      // Recurse into the map value, whatever type it is
+      required = required.concat(
+        getRequiredParamsList([param.value], `${fullName}{value}`)
+      );
+    }
+  });
+
+  return required;
+};
+
+export const isAuthAPI = (traits) => {
+  return (
+    Array.isArray(traits["smithy.api#auth"]) &&
+    traits["smithy.api#auth"].length === 0
+  );
+};
+
+export const isPromptApi = (traits) => {
+  return Object.keys(traits || {}).some((key) => {
+    if (key.split("#")[1] !== "authapi") return false;
+    return true;
+  });
+};
+
+export const AuthFunction = (commands, endpointURL, client, isAuthValid) => {
+  if(!isAuthValid) return ``;
+  const authCommand = commands.find((cmd) => isPromptApi(cmd.traits));
+  if (!authCommand) return '';
+  const inputs = authCommand.inputs || [];
+
+
+  const nestedQuestions = inputs
+    .map((input, i) => {
+      const varName = input.name;
+      const question = `"${varName}: "`;
+      const indent = "  ".repeat(i + 3);
+      if (i === inputs.length - 1) {
+        return `${indent}rl.question(${question}, (${varName}) => {
+${"  ".repeat(i + 4)}rl.close();
+${"  ".repeat(i + 4)}resolve({ ${inputs
+          .map((inp) => `${inp.name}: ${inp.name}.trim()`)
+          .join(", ")} });
+${"  ".repeat(i + 3)}});`;
+      } else {
+        return `${indent}rl.question(${question}, (${varName}) => {`;
+      }
+    })
+    .join("\n");
+
+  const closes = `${"  ".repeat(2)}}${")".repeat(inputs.length - 1)};`;
+
+  const promptLoginFn = `
+function promptLogin() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+${nestedQuestions}
+${closes}
+  });
+}
+`;
+
+  // --- performLogin function ---
+  const destructureVars = `{ ${inputs.map((i) => i.name).join(", ")} }`;
+  const commandParams = inputs
+    .map((i) => `${i.name}: ${i.name}`)
+    .join(",\n        ");
+
+  const performLoginFn = `
+async function performLogin(maxRetries = 3) {
+  let attempt = 0;
+  console.log("No token found. Please login:");
+  while (attempt < maxRetries) {
+    try {
+      const ${destructureVars} = await promptLogin();
+
+      const loginClient = getClientWithoutToken();
+
+      const loginCommand = new ${authCommand.opName}Command({
+        ${commandParams}
+      });
+
+      const loginResult = await loginClient.send(loginCommand);
+      const token = loginResult.user_token.access_token;
+
+      if (token) {
+        if (saveToken(token)) {
+          console.log("Login successful! Token saved.");
+        } else {
+          console.error("Login successful but failed to save token.");
+        }
+        return token;
+      } else {
+        throw new Error("No token received");
+      }
+    } catch (error) {
+      attempt++;
+      console.error(\`Login failed (\${attempt}/\${maxRetries}):\`, error.message);
+
+      console.error("Full error object:");
+      console.error(JSON.stringify(error, null, 2));
+
+      if (attempt >= maxRetries) {
+        console.error("Maximum login attempts reached. Exiting.");
+        process.exit(1);
+      } else {
+        console.log("Please try again.\\n");
+      }
+    }
+  }
+}
+
+`;
+
+  return promptLoginFn + "\n" + performLoginFn;
+};
+
+export function validateAuthConstraints(obj, namespace, service, commands) {
+  const serviceShape = obj["shapes"][`${namespace}#${service}`];
+  if (!serviceShape) {
+    throw new Error(`Service shape ${namespace}#${service} not found`);
+  }
+
+  const traits = serviceShape.traits || {};
+
+  if ("smithy.api#httpBearerAuth" in traits) {
+    const authApiCommands = commands.filter((cmd) =>
+      isPromptApi(cmd.traits)
+    );
+
+    if (authApiCommands.length !== 1) {
+      throw new Error(
+        `Expected exactly 1 authapi operation(your login operation), found ${authApiCommands.length}: ${authApiCommands
+          .map((c) => c.opName)
+          .join(", ")}`
+      );
+    }
+    return true;
+  } else {
+    return false;
+  }
+}

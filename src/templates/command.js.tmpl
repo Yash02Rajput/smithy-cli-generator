@@ -1,0 +1,60 @@
+program
+  .command("{{{actionName}}}")
+  .argument('[params_file]', 'JSON file containing all parameters (use @params.json format)')
+{{{options}}}
+  .description(`
+{{{actionDocumentation}}}:
+
+Usage 1 - Individual options:
+  {{{cliUsageExample}}}
+
+Usage 2 - JSON file:
+  {{{commandPrefix}}} {{{actionName}}} @file.json
+
+Usage 3 - Mixed Usage:
+  {{{mixedUsageExample}}}
+
+Parameters:
+{{{paramDocs}}}
+`)
+  .usage('<action> [options]')
+  .addHelpText('after', `
+Examples:
+
+1. Using individual options:
+   {{{cliUsageExample}}}
+
+2. Using JSON file:
+   $ {{{commandPrefix}}} {{{actionName}}} @params.json
+
+3. Mixed approach (JSON file + CLI overrides):
+   {{{mixedUsageExample}}}
+
+{{{jsonFileExample}}}`)
+  .action(async (paramsFile, options) => {
+    try {
+      let finalOptions = {};
+      const requiredParams = {{{requiredParamsList}}};
+
+
+      if (paramsFile && paramsFile.startsWith('@')) {
+        const jsonFilePath = paramsFile.slice(1); 
+        finalOptions = mergeOptionsWithJsonFile(options, jsonFilePath, requiredParams);
+      } else if (paramsFile) {
+        throw new Error("Params file must start with @ (e.g., @params.json)");
+      } else {
+        finalOptions = options;
+      }
+
+      // Validate that all required options are present
+      validateRequiredOptions(finalOptions, requiredParams);
+
+      {{{documentFieldHandling}}}
+      {{{outputFormat}}}
+      process.exit(0);
+    } catch (err) {
+      console.error("Error message:", err.message);
+      console.error("Error executing:", JSON.stringify(err,null,2));
+      process.exit(1);
+    }
+  });

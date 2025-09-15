@@ -1,0 +1,23 @@
+{
+  "name": "{{{otaCLIName}}}",
+  "version": "{{{packageVersion}}}",
+  "type": "module",
+  "bin": {
+    "{{{otaCLIName}}}": "bin.js"
+  },
+  "pkg": {
+    "targets": [
+      "node18-linux-x64",
+      "node18-macos-x64",
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "@juspay/ota": "file:{{{otaClientLocation}}}",
+    "commander": "14.0.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}
