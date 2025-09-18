@@ -123,9 +123,11 @@ export async function startBuilder(
         encoding: "utf8",
       }
     );
+    const sanitize = (str) => str.toLowerCase().replace(/[^a-z0-9\-]/g, "-");
     const outputPackage = mustache.render(templatePackage, {
       otaClientLocation: clientPath,
       otaCLIName: cliName,
+      package: nModule,
       packageVersion: nModuleVersion,
     });
     console.log("Writing package.json");
