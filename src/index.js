@@ -15,11 +15,14 @@
 
 import fs from "node:fs/promises";
 import { Command } from "commander";
-import {startBuilder} from "./builder.js";
+import path from "node:path";
+import { startBuilder } from "./builder.js";
+import { fileURLToPath } from "url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const program = new Command();
-
 
 program
   .name("juspay-cli-builder")
@@ -66,6 +69,11 @@ program
         options.smithyTypescriptSdkPath + "/typescript-codegen/";
       const modelsJSON = options.smithyTypescriptSdkPath + "/model/model.json";
 
+      const buildPath = path.join(
+        options.buildPath ? options.buildPath : path.resolve(__dirname, ".."),
+        options.cliName.toLowerCase().replace(" ", "-")
+      );
+
       console.log("Invoking CLI builder with:", {
         namespace,
         service,
@@ -74,7 +82,7 @@ program
         endpointURL,
         nModule,
         nModuleVersion,
-        buildPath: options.buildPath,
+        buildPath,
       });
 
       await startBuilder(
@@ -85,7 +93,7 @@ program
         endpointURL,
         nModule,
         nModuleVersion,
-        options.buildPath,
+        buildPath,
         options.cliName.toLowerCase().replace(" ", "-"),
         options.cliDescription
       );

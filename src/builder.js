@@ -14,7 +14,8 @@ import {
   getRequiredParamsList,
   isAuthAPI,
   AuthFunction,
-  validateAuthConstraints
+  validateAuthConstraints,
+  generateBlobFieldHandling,
 } from "./utils.js";
 
 export async function startBuilder(
@@ -103,12 +104,14 @@ export async function startBuilder(
       commands.push(cliOperation);
     }
 
-    const isAuthValid = validateAuthConstraints(obj, namespace, service, commands);
-
-    const projectDir = path.join(
-      buildPath ? buildPath : path.resolve(__dirname, ".."),
-      cliName
+    const isAuthValid = validateAuthConstraints(
+      obj,
+      namespace,
+      service,
+      commands
     );
+
+    const projectDir = buildPath;
     const packageJsonFilePath = path.join(projectDir, "package.json");
     const indexFilePath = path.join(projectDir, "index.js");
 
@@ -150,7 +153,12 @@ export async function startBuilder(
       cliDescription: cliDescription,
       cliVersion: nModuleVersion,
       endpointURL: endpointURL,
-      authPrompt: AuthFunction(commands, endpointURL, serviceName + "Client",isAuthValid)
+      authPrompt: AuthFunction(
+        commands,
+        endpointURL,
+        serviceName + "Client",
+        isAuthValid
+      ),
     });
 
     codeBlocks.push(outputHeader);
@@ -186,6 +194,7 @@ export async function startBuilder(
         documentFieldHandling: generateDocumentFieldHandling(
           commands[i].inputs
         ),
+        blobFileHandling: generateBlobFieldHandling(commands[i].inputs),
         outputFormat: function (text, render) {
           if (isAuthValid && isAuthAPI(commands[i].traits)) {
             return `
@@ -203,7 +212,6 @@ export async function startBuilder(
         throw new Error("No token received");
       }`;
           } else {
-            
             return `
       const client = await getClientWithToken();
       const command = new ${commands[i].opName + "Command"}(finalOptions);
@@ -237,7 +245,6 @@ export async function startBuilder(
     console.log("Writing index.js");
     await fs.writeFile(indexFilePath, codeBlocks.join("\n\n"), "utf-8");
     console.log("Generated index.js");
-
 
     // console.log(commands)
   })(null, data);
