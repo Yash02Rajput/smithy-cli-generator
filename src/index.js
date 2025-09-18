@@ -30,8 +30,15 @@ program
     "Juspay CLI Builder => A CLI builder that builds a CLI on top of Smithy Client"
   )
   .requiredOption("--endpointUrl <endpointUrl>", "Endpoint URL")
+  .requiredOption("--namespace <namespace>", "Service Namespace")
+  .requiredOption("--service <service>", "Service Name")
+  .requiredOption("--plugin <plugin>", "Smithy plugin to use in build JSON")
   .requiredOption(
-    "--smithyBuildJsonPath <smithyBuildJsonPath>",
+    "--smithyBuildJSONPath <smithyBuildJSONPath>",
+    "Path to Smithy build JSON"
+  )
+  .requiredOption(
+    "--smithyModelJSONPath <smithyModelJSONPath>",
     "Path to Smithy build JSON"
   )
   .requiredOption(
@@ -43,36 +50,29 @@ program
   .option("--buildPath <buildPath>", "Path to output the built CLI")
   .action(async (options) => {
     try {
-      const smithyBuildJSONFile = options.smithyBuildJsonPath;
+      const smithyBuildJSONFile = options.smithyBuildJSONPath;
       const smithyBuildJSON = await fs.readFile(smithyBuildJSONFile, {
         encoding: "utf8",
       });
       const smithyBuildObj = JSON.parse(smithyBuildJSON);
-      const namespace =
-        smithyBuildObj["projections"]["typescript-sdk"]["plugins"][
-          "typescript-codegen"
-        ]["service"].split("#")[0];
-      const service =
-        smithyBuildObj["projections"]["typescript-sdk"]["plugins"][
-          "typescript-codegen"
-        ]["service"].split("#")[1];
       const endpointURL = options.endpointUrl;
-      const nModule =
-        smithyBuildObj["projections"]["typescript-sdk"]["plugins"][
-          "typescript-codegen"
-        ]["package"];
+      const nModule = smithyBuildObj["plugins"][options.plugin]["package"];
       const nModuleVersion =
-        smithyBuildObj["projections"]["typescript-sdk"]["plugins"][
-          "typescript-codegen"
-        ]["packageVersion"];
-      const clientPath =
-        options.smithyTypescriptSdkPath + "/typescript-codegen/";
-      const modelsJSON = options.smithyTypescriptSdkPath + "/model/model.json";
+        smithyBuildObj["plugins"][options.plugin]["packageVersion"];
+      if (!nModule || !nModuleVersion) {
+        throw new Error(
+          `Could not find package or packageVersion for plugin ${options.plugin} in smithy-build.json`
+        );
+      }
+      const clientPath = options.smithyTypescriptSdkPath;
+      const modelsJSON = options.smithyModelJSONPath;
 
       const buildPath = path.join(
         options.buildPath ? options.buildPath : path.resolve(__dirname, ".."),
         options.cliName.toLowerCase().replace(" ", "-")
       );
+      const namespace = options.namespace;
+      const service = options.service;
 
       console.log("Invoking CLI builder with:", {
         namespace,
