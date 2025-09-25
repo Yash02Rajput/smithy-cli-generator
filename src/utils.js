@@ -80,8 +80,8 @@ export const generateImports = (ops) => {
   return imports.join(", ");
 };
 
-export const generateOptions = (params) => {
-  return params
+export const generateOptions = (params, isAuthReq) => {
+  const paramOptions = params
     .map((param) => {
       const isList = param.type === "list";
       const isBlob = param.type === "blob";
@@ -144,9 +144,19 @@ export const generateOptions = (params) => {
       return ` .option("${flag}", "${desc}")`;
     })
     .join("\n");
+
+  const authOption = isAuthReq
+    ? `\n .option("--token <token>", "Bearer token for authentication")`
+    : "";
+  return paramOptions + authOption;
 };
 
-export const generateParamDocs = (params, indent = 4, isTopLevel = true) => {
+export const generateParamDocs = (
+  params,
+  indent = 4,
+  isTopLevel = true,
+  isAuthReq
+) => {
   let paramDocs = "";
   const processParam = (param, currentIndent, topLevel) => {
     const req = param.required ? "(required)" : "(optional)";
@@ -223,12 +233,23 @@ export const generateParamDocs = (params, indent = 4, isTopLevel = true) => {
     }
   };
 
-  params.forEach((param) => processParam(param, indent, isTopLevel));
+  params.forEach((param) => processParam(param, indent, isTopLevel, false));
+
+  if (isAuthReq) {
+    const curSpace = " ".repeat(indent);
+    const linePrefix = isTopLevel ? "--" : "";
+    paramDocs += `${curSpace}${linePrefix}token <string> (required) : Bearer token for authentication\n`;
+  }
 
   return paramDocs;
 };
 
-export const generateCliUsageExample = (actionName, params, commandPrefix) => {
+export const generateCliUsageExample = (
+  actionName,
+  params,
+  commandPrefix,
+  isAuthReq
+) => {
   const requiredParams = params.filter((param) => param.required);
   const optionalParams = params.filter((param) => !param.required);
 
@@ -250,6 +271,9 @@ export const generateCliUsageExample = (actionName, params, commandPrefix) => {
 
     example += ` \\\\\n     --${param.name} ${placeholder}`;
   });
+  if (isAuthReq) {
+    example += ` \\\\\n     --token <string>`;
+  }
 
   // Add first optional parameter as example if exists
   if (optionalParams.length > 0) {
@@ -277,7 +301,8 @@ export const generateCliUsageExample = (actionName, params, commandPrefix) => {
 export const generateMixedUsageExample = (
   actionName,
   params,
-  commandPrefix
+  commandPrefix,
+  isAuthReq
 ) => {
   const someParams = params.slice(0, 2); // Take first 2 params as example
   let example = `$ ${commandPrefix} ${actionName} @params.json`;
@@ -293,11 +318,14 @@ export const generateMixedUsageExample = (
     }
     example += ` --${param.name} ${placeholder}`;
   });
+  if (isAuthReq) {
+    example += ` --token <value>`;
+  }
 
   return example;
 };
 
-export const generateJsonFileExample = (params) => {
+export const generateJsonFileExample = (params, isAuthReq) => {
   const exampleObj = {};
 
   params.forEach((param) => {
@@ -316,6 +344,10 @@ export const generateJsonFileExample = (params) => {
       exampleObj[param.name] = `example_${param.name}`;
     }
   });
+
+  if (isAuthReq) {
+    exampleObj["token"] = "your_bearer_token_here";
+  }
 
   return `JSON file format (params.json):
 ${JSON.stringify(exampleObj, null, 2)}`;
@@ -481,7 +513,7 @@ const hasNestedBlob = (param) => {
   return false;
 };
 
-export const getRequiredParamsList = (params, parentKey = "") => {
+export const getRequiredParamsList = (params, parentKey = "", isAuthReq) => {
   let required = [];
 
   params.forEach((param) => {
@@ -507,6 +539,9 @@ export const getRequiredParamsList = (params, parentKey = "") => {
       );
     }
   });
+  if (isAuthReq) {
+    required.push("token");
+  }
 
   return required;
 };
@@ -518,128 +553,6 @@ export const isAuthAPI = (traits) => {
   );
 };
 
-export const isPromptApi = (traits) => {
-  return Object.keys(traits || {}).some((key) => {
-    if (key.split("#")[1] !== "authapi") return false;
-    return true;
-  });
+export const isAuthRequired = (service) => {
+  return Boolean(service.traits && service.traits["smithy.api#httpBearerAuth"]);
 };
-
-export const AuthFunction = (commands, endpointURL, client, isAuthValid) => {
-  if (!isAuthValid) return ``;
-  const authCommand = commands.find((cmd) => isPromptApi(cmd.traits));
-  if (!authCommand) return "";
-  const inputs = authCommand.inputs || [];
-
-  const nestedQuestions = inputs
-    .map((input, i) => {
-      const varName = input.name;
-      const question = `"${varName}: "`;
-      const indent = "  ".repeat(i + 3);
-      if (i === inputs.length - 1) {
-        return `${indent}rl.question(${question}, (${varName}) => {
-${"  ".repeat(i + 4)}rl.close();
-${"  ".repeat(i + 4)}resolve({ ${inputs
-          .map((inp) => `${inp.name}: ${inp.name}.trim()`)
-          .join(", ")} });
-${"  ".repeat(i + 3)}});`;
-      } else {
-        return `${indent}rl.question(${question}, (${varName}) => {`;
-      }
-    })
-    .join("\n");
-
-  const closes = `${"  ".repeat(2)}}${")".repeat(inputs.length - 1)};`;
-
-  const promptLoginFn = `
-function promptLogin() {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-${nestedQuestions}
-${closes}
-  });
-}
-`;
-
-  // --- performLogin function ---
-  const destructureVars = `{ ${inputs.map((i) => i.name).join(", ")} }`;
-  const commandParams = inputs
-    .map((i) => `${i.name}: ${i.name}`)
-    .join(",\n        ");
-
-  const performLoginFn = `
-async function performLogin(maxRetries = 3) {
-  let attempt = 0;
-  console.log("No token found. Please login:");
-  while (attempt < maxRetries) {
-    try {
-      const ${destructureVars} = await promptLogin();
-
-      const loginClient = getClientWithoutToken();
-
-      const loginCommand = new ${authCommand.opName}Command({
-        ${commandParams}
-      });
-
-      const loginResult = await loginClient.send(loginCommand);
-      const token = loginResult.user_token.access_token;
-
-      if (token) {
-        if (saveToken(token)) {
-          console.log("Login successful! Token saved.");
-        } else {
-          console.error("Login successful but failed to save token.");
-        }
-        return token;
-      } else {
-        throw new Error("No token received");
-      }
-    } catch (error) {
-      attempt++;
-      console.error(\`Login failed (\${attempt}/\${maxRetries}):\`, error.message);
-
-      console.error("Full error object:");
-      console.error(JSON.stringify(error, null, 2));
-
-      if (attempt >= maxRetries) {
-        console.error("Maximum login attempts reached. Exiting.");
-        process.exit(1);
-      } else {
-        console.log("Please try again.\\n");
-      }
-    }
-  }
-}
-
-`;
-
-  return promptLoginFn + "\n" + performLoginFn;
-};
-
-export function validateAuthConstraints(obj, namespace, service, commands) {
-  const serviceShape = obj["shapes"][`${namespace}#${service}`];
-  if (!serviceShape) {
-    throw new Error(`Service shape ${namespace}#${service} not found`);
-  }
-
-  const traits = serviceShape.traits || {};
-
-  if ("smithy.api#httpBearerAuth" in traits) {
-    const authApiCommands = commands.filter((cmd) => isPromptApi(cmd.traits));
-
-    if (authApiCommands.length !== 1) {
-      throw new Error(
-        `Expected exactly 1 authapi operation(your login operation), found ${
-          authApiCommands.length
-        }: ${authApiCommands.map((c) => c.opName).join(", ")}`
-      );
-    }
-    return true;
-  } else {
-    return false;
-  }
-}

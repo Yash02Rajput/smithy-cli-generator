@@ -13,8 +13,7 @@ import {
   generateDocumentFieldHandling,
   getRequiredParamsList,
   isAuthAPI,
-  AuthFunction,
-  validateAuthConstraints,
+  isAuthRequired,
   generateBlobFieldHandling,
 } from "./utils.js";
 
@@ -23,7 +22,6 @@ export async function startBuilder(
   service,
   modelsJSON,
   clientPath,
-  endpointURL,
   nModule,
   nModuleVersion,
   buildPath,
@@ -46,6 +44,8 @@ export async function startBuilder(
     let operations = obj["shapes"][`${namespace}#${service}`]["operations"];
     operations = operations.map((val) => val.target);
     // console.log(operations)
+
+    let isAuthReq = isAuthRequired(obj["shapes"][`${namespace}#${service}`]);
 
     let commands = [];
 
@@ -104,13 +104,6 @@ export async function startBuilder(
       commands.push(cliOperation);
     }
 
-    const isAuthValid = validateAuthConstraints(
-      obj,
-      namespace,
-      service,
-      commands
-    );
-
     const projectDir = buildPath;
     const packageJsonFilePath = path.join(projectDir, "package.json");
     const indexFilePath = path.join(projectDir, "index.js");
@@ -123,10 +116,9 @@ export async function startBuilder(
         encoding: "utf8",
       }
     );
-    const sanitize = (str) => str.toLowerCase().replace(/[^a-z0-9\-]/g, "-");
     const outputPackage = mustache.render(templatePackage, {
-      otaClientLocation: clientPath,
-      otaCLIName: cliName,
+      clientLocation: clientPath,
+      cliName: cliName,
       package: nModule,
       packageVersion: nModuleVersion,
     });
@@ -149,18 +141,12 @@ export async function startBuilder(
     const outputHeader = mustache.render(templateHeader, {
       imports: imports,
       importFrom: nModule,
+      service: service,
       client: serviceName + "Client",
-      endpointURL: endpointURL,
       cliName: cliName,
       cliDescription: cliDescription,
       cliVersion: nModuleVersion,
-      endpointURL: endpointURL,
-      authPrompt: AuthFunction(
-        commands,
-        endpointURL,
-        serviceName + "Client",
-        isAuthValid
-      ),
+      isAuthReq: isAuthReq,
     });
 
     codeBlocks.push(outputHeader);
@@ -176,50 +162,73 @@ export async function startBuilder(
         cmd: commands[i].opName + "Command",
         actionName: commands[i].opName,
         actionDocumentation: " " + commands[i].description,
-        paramDocs: generateParamDocs(commands[i].inputs),
-        options: generateOptions(commands[i].inputs),
-        commandPrefix: "airborne-ota-cli", // Make this configurable
+        paramDocs: generateParamDocs(
+          commands[i].inputs,
+          4,
+          true,
+          isAuthReq && !isAuthAPI(commands[i].traits)
+        ),
+        options: generateOptions(
+          commands[i].inputs,
+          isAuthReq && !isAuthAPI(commands[i].traits)
+        ),
+        commandPrefix: cliName, // Make this configurable
         cliUsageExample: generateCliUsageExample(
           commands[i].opName,
           commands[i].inputs,
-          cliName
+          cliName,
+          isAuthReq && !isAuthAPI(commands[i].traits)
         ),
         mixedUsageExample: generateMixedUsageExample(
           commands[i].opName,
           commands[i].inputs,
-          cliName
+          cliName,
+          isAuthReq && !isAuthAPI(commands[i].traits)
         ),
-        jsonFileExample: generateJsonFileExample(commands[i].inputs),
+        jsonFileExample: generateJsonFileExample(
+          commands[i].inputs,
+          isAuthReq && !isAuthAPI(commands[i].traits)
+        ),
         requiredParamsList: JSON.stringify(
-          getRequiredParamsList(commands[i].inputs)
+          getRequiredParamsList(
+            commands[i].inputs,
+            "",
+            isAuthReq && !isAuthAPI(commands[i].traits)
+          )
         ),
         documentFieldHandling: generateDocumentFieldHandling(
           commands[i].inputs
         ),
         blobFileHandling: generateBlobFieldHandling(commands[i].inputs),
-        outputFormat: function (text, render) {
-          if (isAuthValid && isAuthAPI(commands[i].traits)) {
-            return `
-      const client = getClientWithoutToken();
-      const command = new ${commands[i].opName + "Command"}(finalOptions);
-      const output = await client.send(command);
-      const token = output.user_token.access_token;
-      if (token) {
-        if (saveToken(token)) {
-          console.log("Login successful! Token saved.");
-        } else {
-          console.error("Login successful but failed to save token.");
-        }
-      } else {
-        throw new Error("No token received");
-      }`;
+        client: function (text, render) {
+          if (isAuthReq && !isAuthAPI(commands[i].traits)) {
+            return `const client = await getClient(options.token, true);`;
           } else {
-            return `
-      const client = await getClientWithToken();
-      const command = new ${commands[i].opName + "Command"}(finalOptions);
-      const output = await client.send(command);
-      console.log(JSON.stringify(output, null, 2));`;
+            return `const client = await getClient(null, false);`;
           }
+
+          //     if (isAuthReq && isAuthAPI(commands[i].traits)) {
+          //       return `
+          // const client = getClientWithoutToken();
+          // const command = new ${commands[i].opName + "Command"}(finalOptions);
+          // const output = await client.send(command);
+          // const token = output.user_token.access_token;
+          // if (token) {
+          //   if (saveToken(token)) {
+          //     console.log("Login successful! Token saved.");
+          //   } else {
+          //     console.error("Login successful but failed to save token.");
+          //   }
+          // } else {
+          //   throw new Error("No token received");
+          // }`;
+          //     } else {
+          //       return `
+          // const client = await getClientWithToken();
+          // const command = new ${commands[i].opName + "Command"}(finalOptions);
+          // const output = await client.send(command);
+          // console.log(JSON.stringify(output, null, 2));`;
+          //     }
         },
       });
 

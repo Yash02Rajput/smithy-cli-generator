@@ -5,7 +5,7 @@
   "license": "ISC",
   "type": "module",
   "bin": {
-    "cli-generator": "src/index.js"
+    "smithy-cli-generator": "src/index.js"
   },
   "main": "src/index.js",
   "scripts": {

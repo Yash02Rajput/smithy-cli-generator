@@ -52,7 +52,10 @@ Examples:
       {{{blobFileHandling}}}
 
       {{{documentFieldHandling}}}
-      {{{outputFormat}}}
+      {{{client}}}
+      const command = new {{{cmd}}}(finalOptions);
+      const output = await client.send(command);
+      console.log(JSON.stringify(output, null, 2));
       process.exit(0);
     } catch (err) {
       console.error("Error message:", err.message);

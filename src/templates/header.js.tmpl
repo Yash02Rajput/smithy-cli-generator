@@ -1,58 +1,105 @@
 import { Command } from "commander";
 import path from "path";
 import { {{{imports}}}, {{{client}}} } from "{{{importFrom}}}"
-import fs from "fs";
-import os from "os";
-import readline from "readline";
+import { promises as fs } from "fs";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-const tokenFile = path.join(
-  os.homedir(),
-  ".{{{cliName}}}"
-);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-function getStoredToken() {
+const configFilePath = path.join(__dirname, ".config");
+
+/**
+ * Reads the config file and parses it as JSON.
+ * Returns an Error if file not found.
+ */
+async function readConfigFile() {
   try {
-    if (fs.existsSync(tokenFile)) {
-      const raw = fs.readFileSync(tokenFile, "utf8").trim();
-      return raw || null;
+    const data = await fs.readFile(configFilePath, "utf-8");
+    return JSON.parse(data);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      throw new Error(
+        `❌ No config file found. Please run configure --base-url <url>\` first.`
+      );
     }
-    return null;
-  } catch (error) {
-    return null;
+    throw err;
   }
 }
 
-function saveToken(token) {
+/**
+ * Reads the config file and parses it as JSON.
+ * Returns an object (empty if file doesn't exist).
+ */
+async function readConfigFileOrEmpty() {
   try {
-    fs.writeFileSync(tokenFile, token, "utf8");
-    return true;
-  } catch (error) {
-    console.error("Error saving token:", error.message);
-    return false;
+    const data = await fs.readFile(configFilePath, "utf-8");
+    return JSON.parse(data);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return {};
+    }
+    throw err;
   }
 }
 
 
-async function getClientWithToken() {
-  let token = getStoredToken();
-
-  if (!token) {
-    token = await performLogin();
+/**
+ * Writes the given config object to the config file as JSON.
+ */
+async function writeConfigFile(config) {
+  try {
+    await fs.writeFile(configFilePath, JSON.stringify(config, null, 2), "utf-8");
+  } catch (err) {
+    throw err;
   }
-
-  return new AirborneClient({
-    token: { token: token },
-    endpoint: "{{{endpointURL}}}",
-  });
 }
 
-function getClientWithoutToken() {
-  return new AirborneClient({
-    endpoint: "{{{endpointURL}}}",
-  });
+/**
+ * Get the endpoint from the config file
+ */
+export async function getBaseUrl() {
+  try {
+    const config = await readConfigFile();
+    return config.baseUrl || null; // return null if not set
+  } catch (err) {
+    console.error("Error reading endpoint:", err);
+    return null;
+  }
 }
 
-{{{authPrompt}}}
+/**
+ * Set the endpoint in the config file
+ */
+export async function setBaseUrl(url) {
+  try {
+    const config = await readConfigFileOrEmpty();
+    config.baseUrl = url;
+    await writeConfigFile(config);
+  } catch (err) {
+    console.error("Error writing endpoint:", err);
+  }
+}
+
+
+async function getClient(token,isAuthReq){
+  const baseUrl = await getBaseUrl();
+  
+  if(!token || !isAuthReq){
+    return new {{{service}}}Client({
+      endpoint: baseUrl 
+    })
+  }
+  else{
+    return new {{{service}}}Client({
+      endpoint: baseUrl,
+      token: { token: token },
+    })
+  }
+}
+
+
 
 function mergeOptionsWithJsonFile(options, jsonFilePath) {
   const jsonOptions = readJsonFile(jsonFilePath);
@@ -128,6 +175,6 @@ function validateRequiredOptions(options, requiredParams) {
 
 
 const program = new Command()
-  .name("airborne-ota-cli")
-  .description("Command-line interface for Airborne OTA operations")
+  .name("{{{cliName}}}")
+  .description("{{{cliDescription}}}")
   .version("0.0.1");

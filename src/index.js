@@ -25,11 +25,10 @@ const __dirname = path.dirname(__filename);
 const program = new Command();
 
 program
-  .name("juspay-cli-builder")
+  .name("smithy-cli-generator")
   .description(
-    "Juspay CLI Builder => A CLI builder that builds a CLI on top of Smithy Client"
+    "Smithy CLI Generator => A CLI builder that builds a CLI on top of Smithy Client"
   )
-  .requiredOption("--endpointUrl <endpointUrl>", "Endpoint URL")
   .requiredOption("--namespace <namespace>", "Service Namespace")
   .requiredOption("--service <service>", "Service Name")
   .requiredOption("--plugin <plugin>", "Smithy plugin to use in build JSON")
@@ -55,7 +54,6 @@ program
         encoding: "utf8",
       });
       const smithyBuildObj = JSON.parse(smithyBuildJSON);
-      const endpointURL = options.endpointUrl;
       const nModule = smithyBuildObj["plugins"][options.plugin]["package"];
       const nModuleVersion =
         smithyBuildObj["plugins"][options.plugin]["packageVersion"];
@@ -79,7 +77,6 @@ program
         service,
         modelsJSON,
         clientPath,
-        endpointURL,
         nModule,
         nModuleVersion,
         buildPath,
@@ -90,7 +87,6 @@ program
         service,
         modelsJSON,
         clientPath,
-        endpointURL,
         nModule,
         nModuleVersion,
         buildPath,

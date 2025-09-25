@@ -1,1 +1,15 @@
+program
+  .command("configure")
+  .requiredOption("-u, --base-url <url>", "Base endpoint URL for the API")
+  .action(async (options) => {
+    try {
+      await setBaseUrl(options.baseUrl);
+      console.log(`✅ Base URL set to: ${options.baseUrl}`);
+      process.exit(0); // Exit with success code
+    } catch (err) {
+      console.error("❌ Failed to create config", err.message);
+      process.exit(1); // Exit with failure code
+    }
+  });
+
 export default program;
