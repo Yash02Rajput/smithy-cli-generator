@@ -55,11 +55,10 @@ Examples:
       {{{client}}}
       const command = new {{{cmd}}}(finalOptions);
       const output = await client.send(command);
-      console.log(JSON.stringify(output, null, 2));
+      console.log(util.inspect(output, { showHidden: false, depth: null, colors: true }));
       process.exit(0);
     } catch (err) {
       console.error("Error message:", err.message);
-      console.error("Error executing:", JSON.stringify(err,null,2));
-      process.exit(1);
+      console.error("Error executing:", util.inspect(err, { depth: 2, colors: true }));
     }
   });

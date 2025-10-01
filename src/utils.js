@@ -88,7 +88,7 @@ export const generateOptions = (params, isAuthReq) => {
 
       let typePlaceholder;
       if (isBlob) {
-        typePlaceholder = param.streaming ? `<file-path>` : `<file-path>`;
+        typePlaceholder = param.streaming ? `<file>` : `<file>`;
       } else if (isList) {
         typePlaceholder = `<${param.name}...>`;
       } else {
