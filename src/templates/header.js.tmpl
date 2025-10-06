@@ -5,7 +5,8 @@ import { promises as fsPromises } from "fs";
 import fs from "fs";
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import util from "node:util";
+import chalk from 'chalk';
+import stringify from 'json-stringify-safe';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -174,6 +175,20 @@ function validateRequiredOptions(options, requiredParams) {
 }
 
 
+function printColoredJSON(obj, indent = 2) {
+  const jsonString = stringify(obj, null, indent);
+  
+  // Apply colors while keeping valid JSON structure
+  const colored = jsonString
+    .replace(/"([^"]+)":/g, (match) => chalk.cyan(match))  // keys with quotes and colon
+    .replace(/: "([^"]*)"/g, (match) => ': ' + chalk.green(match.slice(2)))  // string values
+    .replace(/: (-?\d+\.?\d*)(,?)/g, (match, num, comma) => ': ' + chalk.yellow(num) + comma)  // numbers
+    .replace(/: (true|false)/g, (match, bool) => ': ' + chalk.magenta(bool))  // booleans
+    .replace(/: null/g, ': ' + chalk.gray('null'))  // null
+    .replace(/\[Circular\]/g, chalk.red('[Circular]'));  // circular refs
+  
+  return colored;
+}
 
 
 const program = new Command()
