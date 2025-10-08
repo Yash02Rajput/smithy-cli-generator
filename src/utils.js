@@ -22,6 +22,20 @@ export const convertSmithyTypeToCliType = (type, obj) => {
         streaming: isStreaming || false,
       };
 
+    case "enum":
+      const enumValues = [];
+      for (let [memberName, memberDef] of Object.entries(typeDef.members)) {
+        const enumValue = memberDef.traits?.["smithy.api#enumValue"];
+        enumValues.push({
+          name: memberName,
+          value: enumValue || memberName,
+        });
+      }
+      return {
+        type: "enum",
+        values: enumValues,
+      };
+
     case "list":
       return {
         type: "list",
@@ -124,6 +138,19 @@ export const generateOptions = (params, isAuthReq) => {
         return ` .option("${flag}", "${desc}", ${parserFn})`;
       }
 
+      if (param.type === "enum") {
+        const allowedValues = param.values.map((v) => v.value).join(", ");
+        const enumDesc = `${desc} (allowed values: ${allowedValues})`;
+        const parserFn = `(value) => {
+  const allowedValues = [${param.values.map((v) => `"${v.value}"`).join(", ")}];
+  if (!allowedValues.includes(value)) {
+    throw new Error("--${param.name} must be one of: ${allowedValues}");
+  }
+  return value;
+}`;
+        return ` .option("${flag}", "${enumDesc}", ${parserFn})`;
+      }
+
       if (param.type === "document") {
         const parserFn = `(value) => {
   try {
@@ -175,6 +202,13 @@ export const generateParamDocs = (
       case "blob":
         const streamingNote = param.streaming ? " (streaming)" : "";
         paramDocs += `${curSpace}${linePrefix}${param.name} <file-path>${streamingNote} ${req}`;
+        if (param.documentation) paramDocs += ` : ${param.documentation}`;
+        paramDocs += "\n";
+        break;
+
+      case "enum":
+        const enumValues = param.values.map((v) => v.value).join(" | ");
+        paramDocs += `${curSpace}${linePrefix}${param.name} <${enumValues}> ${req}`;
         if (param.documentation) paramDocs += ` : ${param.documentation}`;
         paramDocs += "\n";
         break;

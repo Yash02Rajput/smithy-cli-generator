@@ -8,7 +8,7 @@ program
   It is typically the first command you should run before using any other commands.
 
   Usage:
-    $ example-core-cli configure --base-url <api-url>
+    $ example-cli configure --base-url <api-url>
 
   Parameters:
       -u, --base-url <url> (required)
@@ -18,13 +18,13 @@ program
   Examples:
 
   1. Setting the base URL for production:
-    $ example-core-cli configure --base-url https://api.example.com
+    $ example-cli configure --base-url https://api.example.com
 
   2. Setting the base URL for local development:
-    $ example-core-cli configure --base-url http://localhost:3000
+    $ example-cli configure --base-url http://localhost:3000
 
   3. Overriding an existing configuration:
-    $ example-core-cli configure -u https://staging.example.com
+    $ example-cli configure -u https://staging.example.com
 
 `)
   .usage('--base-url <url>')
