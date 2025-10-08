@@ -117,6 +117,8 @@ export async function startBuilder(
         encoding: "utf8",
       }
     );
+
+   
     const outputPackage = mustache.render(templatePackage, {
       clientLocation: clientPath,
       cliName: cliName,

@@ -14,12 +14,13 @@
     "outputPath": "dist"
   },
   "dependencies": {
-    "{{{package}}}": "file:{{{clientLocation}}}",
+    "{{{package}}}": "{{{clientLocation}}}",
     "chalk": "^5.6.2",
     "commander": "14.0.1",
     "json-stringify-safe": "^5.0.1"
   },
-  "devDependencies": {
-    "pkg": "^5.8.1"
+  "exports": {
+    ".": "./index.js",
+    "./action": "./action.js"
   }
 }

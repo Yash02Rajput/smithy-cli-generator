@@ -41,8 +41,8 @@ program
     "Path to Smithy build JSON"
   )
   .requiredOption(
-    "--smithyTypescriptSdkPath <smithyTypescriptSdkPath>",
-    "Path to Smithy TypeScript SDK"
+    "--smithyTypescriptSdk <smithyTypescriptSdk>",
+    "Path to Smithy TypeScript SDK or npm package number to use"
   )
   .requiredOption("--cliName <cliName>", "Name of the CLI")
   .requiredOption("--cliDescription <cliDescription>", "Description of the CLI")
@@ -62,7 +62,7 @@ program
           `Could not find package or packageVersion for plugin ${options.plugin} in smithy-build.json`
         );
       }
-      const clientPath = options.smithyTypescriptSdkPath;
+      const clientPath = options.smithyTypescriptSdk;
       const modelsJSON = options.smithyModelJSONPath;
 
       const buildPath = path.join(
