@@ -1,15 +1,43 @@
 program
   .command("configure")
   .requiredOption("-u, --base-url <url>", "Base endpoint URL for the API")
+  .description(`
+  Configure the CLI to use a specific API base URL.
+
+  This command allows you to set or update the base API endpoint used by all subsequent CLI operations.
+  It is typically the first command you should run before using any other commands.
+
+  Usage:
+    $ example-core-cli configure --base-url <api-url>
+
+  Parameters:
+      -u, --base-url <url> (required)
+          The base URL of your API endpoint.
+          Example: https://api.example.com or http://localhost:3000
+
+  Examples:
+
+  1. Setting the base URL for production:
+    $ example-core-cli configure --base-url https://api.example.com
+
+  2. Setting the base URL for local development:
+    $ example-core-cli configure --base-url http://localhost:3000
+
+  3. Overriding an existing configuration:
+    $ example-core-cli configure -u https://staging.example.com
+
+`)
+  .usage('--base-url <url>')
   .action(async (options) => {
     try {
       await setBaseUrl(options.baseUrl);
       console.log(`✅ Base URL set to: ${options.baseUrl}`);
-      process.exit(0); // Exit with success code
+      process.exit(0);
     } catch (err) {
       console.error("❌ Failed to create config", err.message);
-      process.exit(1); // Exit with failure code
+      process.exit(1);
     }
   });
+
 
 export default program;

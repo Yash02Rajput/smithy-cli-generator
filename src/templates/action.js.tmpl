@@ -1,0 +1,23 @@
+export async function {{{functionName}}}(paramsFile, options){
+  let finalOptions = {};
+  const requiredParams = {{{requiredParamsList}}};
+
+  if (paramsFile && paramsFile.startsWith('@')) {
+    const jsonFilePath = paramsFile.slice(1); 
+    finalOptions = mergeOptionsWithJsonFile(options, jsonFilePath, requiredParams);
+  } else if (paramsFile) {
+    throw new Error("Params file must start with @ (e.g., @params.json)");
+  } else {
+    finalOptions = options;
+  }
+
+  // Validate that all required options are present
+  validateRequiredOptions(finalOptions, requiredParams);
+
+  {{{blobFileHandling}}}
+
+  {{{documentFieldHandling}}}
+  {{{client}}}
+  const command = new {{{cmd}}}(finalOptions);
+  return await client.send(command);
+}

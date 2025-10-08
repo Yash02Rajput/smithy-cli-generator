@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import mustache from "mustache";
 import {
   convertSmithyTypeToCliType,
-  generateImports,
+  generateCommandImports,
   generateOptions,
   generateParamDocs,
   generateCliUsageExample,
@@ -15,6 +15,7 @@ import {
   isAuthAPI,
   isAuthRequired,
   generateBlobFieldHandling,
+  generateActionImports,
 } from "./utils.js";
 
 export async function startBuilder(
@@ -129,9 +130,27 @@ export async function startBuilder(
     await fs.mkdir(projectDir, { recursive: true });
 
     let codeBlocks = [];
+    let actionBlocks = [];
 
-    // header
-    const imports = generateImports(commands);
+    const commandImports = generateCommandImports(commands);
+    const actionImports = generateActionImports(commands);
+
+    const actionHeaderTemplate = await fs.readFile(
+      path.join(templatePath, "action-header.js.tmpl"),
+      {
+        encoding: "utf8",
+      }
+    );
+
+    const actionHeader = mustache.render(actionHeaderTemplate, {
+      service: service,
+      imports: commandImports,
+      importFrom: nModule,
+      client: serviceName + "Client",
+    });
+
+    actionBlocks.push(actionHeader);
+
     const templateHeader = await fs.readFile(
       path.join(templatePath, "header.js.tmpl"),
       {
@@ -139,14 +158,11 @@ export async function startBuilder(
       }
     );
     const outputHeader = mustache.render(templateHeader, {
-      imports: imports,
-      importFrom: nModule,
+      actions: actionImports,
       service: service,
-      client: serviceName + "Client",
       cliName: cliName,
       cliDescription: cliDescription,
       cliVersion: nModuleVersion,
-      isAuthReq: isAuthReq,
     });
 
     codeBlocks.push(outputHeader);
@@ -158,8 +174,14 @@ export async function startBuilder(
           encoding: "utf8",
         }
       );
+      const actionTemplate = await fs.readFile(
+        path.join(templatePath, "/action.js.tmpl"),
+        {
+          encoding: "utf8",
+        }
+      );
+
       const outputCommand = mustache.render(templateCommand, {
-        cmd: commands[i].opName + "Command",
         actionName: commands[i].opName,
         actionDocumentation: " " + commands[i].description,
         paramDocs: generateParamDocs(
@@ -189,15 +211,17 @@ export async function startBuilder(
           commands[i].inputs,
           isAuthReq && !isAuthAPI(commands[i].traits)
         ),
+      });
+
+      const commandAction = mustache.render(actionTemplate, {
+        cmd: commands[i].opName + "Command",
+        functionName: commands[i].opName + "Action",
         requiredParamsList: JSON.stringify(
           getRequiredParamsList(
             commands[i].inputs,
             "",
             isAuthReq && !isAuthAPI(commands[i].traits)
           )
-        ),
-        documentFieldHandling: generateDocumentFieldHandling(
-          commands[i].inputs
         ),
         blobFileHandling: generateBlobFieldHandling(commands[i].inputs),
         client: function (text, render) {
@@ -206,31 +230,12 @@ export async function startBuilder(
           } else {
             return `const client = await getClient(null, false);`;
           }
-
-          //     if (isAuthReq && isAuthAPI(commands[i].traits)) {
-          //       return `
-          // const client = getClientWithoutToken();
-          // const command = new ${commands[i].opName + "Command"}(finalOptions);
-          // const output = await client.send(command);
-          // const token = output.user_token.access_token;
-          // if (token) {
-          //   if (saveToken(token)) {
-          //     console.log("Login successful! Token saved.");
-          //   } else {
-          //     console.error("Login successful but failed to save token.");
-          //   }
-          // } else {
-          //   throw new Error("No token received");
-          // }`;
-          //     } else {
-          //       return `
-          // const client = await getClientWithToken();
-          // const command = new ${commands[i].opName + "Command"}(finalOptions);
-          // const output = await client.send(command);
-          // console.log(JSON.stringify(output, null, 2));`;
-          //     }
         },
+        documentFieldHandling: generateDocumentFieldHandling(
+          commands[i].inputs
+        ),
       });
+      actionBlocks.push(commandAction);
 
       codeBlocks.push(outputCommand);
     }
@@ -252,6 +257,12 @@ export async function startBuilder(
     );
     const outputBin = mustache.render(templateBin, {});
     await fs.writeFile(path.join(projectDir, "bin.js"), outputBin, "utf-8");
+
+    await fs.writeFile(
+      path.join(projectDir, "action.js"),
+      actionBlocks.join("\n"),
+      "utf-8"
+    );
 
     console.log("Writing index.js");
     await fs.writeFile(indexFilePath, codeBlocks.join("\n\n"), "utf-8");

@@ -72,10 +72,18 @@ export const convertSmithyTypeToCliType = (type, obj) => {
   }
 };
 
-export const generateImports = (ops) => {
+export const generateCommandImports = (ops) => {
   let imports = [];
   for (let i = 0; i < ops.length; i++) {
     imports.push(ops[i].opName + "Command");
+  }
+  return imports.join(", ");
+};
+
+export const generateActionImports = (ops) => {
+  let imports = [];
+  for (let i = 0; i < ops.length; i++) {
+    imports.push(ops[i].opName + "Action");
   }
   return imports.join(", ");
 };
