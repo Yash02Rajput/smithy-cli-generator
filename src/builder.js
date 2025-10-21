@@ -118,7 +118,6 @@ export async function startBuilder(
       }
     );
 
-   
     const outputPackage = mustache.render(templatePackage, {
       clientLocation: clientPath,
       cliName: cliName,
@@ -249,7 +248,10 @@ export async function startBuilder(
         encoding: "utf8",
       }
     );
-    const outputFooter = mustache.render(templateFooter, {});
+    const outputFooter = mustache.render(templateFooter, {
+      cliName: cliName,
+    });
+
     codeBlocks.push(outputFooter);
     const templateBin = await fs.readFile(
       path.join(templatePath, "bin.js.tmpl"),
